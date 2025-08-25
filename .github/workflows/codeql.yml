@@ -89,6 +89,7 @@ jobs:
     - if: matrix.build-mode == 'manual'
       shell: bash
       run: |
+        ls -al
         sudo apt update
         sudo apt install -y cmake build-essential
         mkdir build
