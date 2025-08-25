@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Recursively find all .cpp and .c files
 file(GLOB_RECURSE SOURCES
-    *.cpp
-    *.c
+    ./source/**/*.cpp
+    ./source/**/*.c
 )
 
 add_executable(telemetry_app ${SOURCES})
