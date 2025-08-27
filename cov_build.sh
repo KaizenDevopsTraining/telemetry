@@ -45,5 +45,3 @@ export CFLAGS=" ${DEBUG_CFLAGS} -I${INSTALL_DIR}/include/rtmessage -I${INSTALL_D
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu -lglib-2.0"
 
 ./configure --prefix=${INSTALL_DIR} --without-rdklogger --without-webconfig-framework && make && make install
-
-gcc ./source/t2dm/plugin_main.c -o plugin_main ${CFLAGS} ${LDFLAGS}
