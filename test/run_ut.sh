@@ -38,22 +38,22 @@ autoreconf --install
 
 ./configure --enable-gtestapp
 
+# to fix the rbus.h include failure
+#mkdir -p source/ccspinterface/rbus/
+#cp source/test/rbus/include/* source/ccspinterface/rbus/
+
 make -C source/test
 
-# Execute test suites for different sub-modules
-
-
-# ./source/test/protocol/protocol_gtest.bin
-# ./source/test/xconf-client/xconfclient_gtest.bin
-# ./source/test/telemetry_gtest.bin
-
-
-
 tests="
- ./source/test/dcautils/dcautil_gtest.bin
+./source/test/bulkdata/profile_gtest.bin
+./source/test/bulkdata/datamodel_gtest.bin
+./source/test/bulkdata/profilexconf_gtest.bin
+./source/test/bulkdata/t2markers_gtest.bin
 ./source/test/reportgen/reportgen_gtest.bin
 ./source/test/scheduler/scheduler_gtest.bin
 ./source/test/t2parser/t2parser_gtest.bin
+./source/test/dcautils/dcautil_gtest.bin
+./source/test/ccspinterface/ccspinterface_gtest.bin
 "
 
 for test in $tests

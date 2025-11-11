@@ -53,6 +53,11 @@ static pid_t xconfReportPid;
 static bool isAbortTriggered = false ;
 static bool isOnDemandReport = false ;
 
+#ifdef GTEST_ENABLE
+#define sendReportOverHTTP __wrap_sendReportOverHTTP
+#define sendCachedReportsOverHTTP __wrap_sendCachedReportsOverHTTP
+#endif
+
 static char *getTimeStamp (void)
 {
     char *timeStamp;
@@ -215,9 +220,13 @@ static void* CollectAndReportXconf(void* data)
     do
     {
         T2Info("%s while Loop -- START \n", __FUNCTION__);
+        if(singleProfile == NULL)
+        {
+            T2Error("%s is called with empty profile, profile reload might be in-progress, skip the request\n", __FUNCTION__);
+            goto reportXconfThreadEnd;
+        }
         profile = singleProfile;
         Vector *profileParamVals = NULL;
-        Vector *grepResultList = NULL;
         cJSON *valArray = NULL;
         char* jsonReport = NULL;
         char* customLogPath = NULL;
@@ -277,27 +286,15 @@ static void* CollectAndReportXconf(void* data)
             }
             if(profile->topMarkerList != NULL && Vector_Size(profile->topMarkerList) > 0)
             {
-                Vector *topMarkerResultList = NULL;
-                Vector_Create(&topMarkerResultList);
-                processTopPattern(profile->name, profile->topMarkerList, topMarkerResultList, count);
-                long int reportSize = Vector_Size(topMarkerResultList);
-                if(reportSize != 0)
-                {
-                    T2Info("Top markers report is compleated report size %ld\n", (unsigned long)reportSize);
-                    encodeGrepResultInJSON(valArray, topMarkerResultList);
-                }
-                else
-                {
-                    T2Debug("Top markers report generated but is empty possabliy the memory value is changed");
-                }
-                Vector_Destroy(topMarkerResultList, freeGResult);
+                processTopPattern(profile->name, profile->topMarkerList, count);
+                T2Info("Top markers report is completed\n");
+                encodeTopResultInJSON(valArray, profile->topMarkerList);
             }
             if(profile->gMarkerList != NULL && Vector_Size(profile->gMarkerList) > 0)
             {
-                getGrepResults(&(profile->grepSeekProfile), profile->gMarkerList, &grepResultList, profile->bClearSeekMap, checkRotated, customLogPath); // Passing 5th argument as true to check rotated logs only in case of single profile
+                getGrepResults(&(profile->grepSeekProfile), profile->gMarkerList, profile->bClearSeekMap, checkRotated, customLogPath); // Passing 4th argument as true to check rotated logs only in case of single profile
                 T2Info("Grep complete for %lu markers \n", (unsigned long)Vector_Size(profile->gMarkerList));
-                encodeGrepResultInJSON(valArray, grepResultList);
-                Vector_Destroy(grepResultList, freeGResult);
+                encodeGrepResultInJSON(valArray, profile->gMarkerList);
             }
 
             dcaFlagReportCompleation();
@@ -344,6 +341,8 @@ static void* CollectAndReportXconf(void* data)
                     Vector_RemoveItem(profile->cachedReportList, (void*) thirdCachedReport, NULL);
                     free(thirdCachedReport);
                 }
+                // Before caching the report, add "REPORT_TYPE": "CACHED"
+                // tagReportAsCached(&jsonReport);
                 Vector_PushBack(profile->cachedReportList, strdup(jsonReport));
                 profile->reportInProgress = false;
                 /* CID 187010: Dereference before null check */
@@ -414,6 +413,8 @@ static void* CollectAndReportXconf(void* data)
                         Vector_RemoveItem(profile->cachedReportList, (void*) thirdCachedReport, NULL);
                         free(thirdCachedReport);
                     }
+                    // Before caching the report, add "REPORT_TYPE": "CACHED"
+                    tagReportAsCached(&jsonReport);
                     Vector_PushBack(profile->cachedReportList, strdup(jsonReport));
 
                     T2Info("Report Cached, No. of reportes cached = %lu\n", (unsigned long)Vector_Size(profile->cachedReportList));
@@ -440,7 +441,6 @@ static void* CollectAndReportXconf(void* data)
         {
             T2Error("Unsupported encoding format : %s\n", profile->encodingType);
         }
-
 # ifdef PERSIST_LOG_MON_REF
         if(T2ERROR_SUCCESS == saveSeekConfigtoFile(profile->name, profile->grepSeekProfile))
         {
@@ -451,7 +451,6 @@ static void* CollectAndReportXconf(void* data)
             T2Warning("Failed to save grep config to file for profile: %s\n", profile->name);
         }
 #endif
-
         clock_gettime(CLOCK_REALTIME, &endTime);
         getLapsedTime(&elapsedTime, &endTime, &startTime);
         T2Info("Elapsed Time for : %s = %lu.%lu (Sec.NanoSec)\n", profile->name, (unsigned long)elapsedTime.tv_sec, elapsedTime.tv_nsec);
@@ -491,14 +490,13 @@ static void* CollectAndReportXconf(void* data)
         //pthread_mutex_unlock(&plMutex);
 reportXconfThreadEnd :
         T2Info("%s while Loop -- END \n", __FUNCTION__);
-        T2Info("%s --out\n", __FUNCTION__);
         pthread_cond_wait(&reuseThread, &plMutex);
     }
     while(initialized);
     reportThreadExits = false;
     pthread_mutex_unlock(&plMutex);
     pthread_cond_destroy(&reuseThread);
-    T2Debug("%s --out exiting the CollectAndReportXconf thread \n", __FUNCTION__);
+    T2Info("%s --out exiting the CollectAndReportXconf thread \n", __FUNCTION__);
     return NULL;
 }
 
@@ -589,7 +587,6 @@ T2ERROR ProfileXConf_uninit()
         pthread_cond_signal(&reuseThread);
         pthread_mutex_unlock(&plMutex);
         pthread_join(singleProfile->reportThread, NULL);
-        reportThreadExits = false;
         singleProfile->reportInProgress = false ;
         T2Info("Final report is completed, releasing profile memory\n");
     }
@@ -678,7 +675,7 @@ bool ProfileXConf_isNameEqual(char* profileName)
         if(singleProfile && (singleProfile->name != NULL) && (profileName != NULL) && !strcmp(singleProfile->name, profileName)) //Adding NULL check to avoid strcmp crash
         {
             isName = true;
-            T2Info("singleProfile->name = %s and profileName = %s and return %s\n", singleProfile->name, profileName, isName ? "true" : "false");
+            T2Debug("singleProfile->name = %s and profileName = %s and return %s\n", singleProfile->name, profileName, isName ? "true" : "false");
 
         }
     }
@@ -724,20 +721,12 @@ T2ERROR ProfileXConf_delete(ProfileXConf *profile)
 
     if(singleProfile->reportInProgress)
     {
-        T2Info("Waiting for CollectAndReport to be complete : %s\n", singleProfile->name);
-        pthread_mutex_lock(&plMutex);
-        initialized = false;
-        T2Info("Sending signal to reuse Thread in CollectAndReportXconf\n");
-        pthread_cond_signal(&reuseThread);
-        pthread_mutex_unlock(&plMutex);
-        pthread_join(singleProfile->reportThread, NULL);
-        T2Info("reportThread exits and initialising the profile list\n");
-        reportThreadExits = false;
-        initialized = true;
-        singleProfile->reportInProgress = false ;
+        T2Info("Waiting for CollectAndReportXconf to be complete : %s\n", singleProfile->name);
     }
 
     pthread_mutex_lock(&plMutex);
+
+    profile->reportThread = singleProfile->reportThread;
 
     size_t count = Vector_Size(singleProfile->cachedReportList);
     // Copy any cached message present in previous single profile to new profile
@@ -1006,9 +995,14 @@ T2ERROR ProfileXConf_terminateReport()
 
     T2ERROR ret = T2ERROR_FAILURE;
 
+    pthread_mutex_lock(&plMutex);
+
     if(!singleProfile)
     {
         T2Error("Xconf profile is not set.\n");
+
+        pthread_mutex_unlock(&plMutex);
+
         return ret;
     }
 
@@ -1035,6 +1029,8 @@ T2ERROR ProfileXConf_terminateReport()
     {
         T2Info("No report generation in progress. No further action required for abort.\n");
     }
+
+    pthread_mutex_unlock(&plMutex);
 
     return ret;
 
