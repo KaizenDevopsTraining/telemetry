@@ -73,12 +73,14 @@ jobs:
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
-        # If you wish to specify custom queries, you can do so here or in a config file.
-        # By default, queries listed here will override any specified in a config file.
-        # Prefix the list here with "+" to use these queries and those in the config file.
-
-        # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
-        # queries: security-extended,security-and-quality
+        # Enable comprehensive analysis similar to Coverity
+        # security-extended: includes additional security queries beyond the default set
+        # security-and-quality: includes both security and code quality checks
+        queries: security-extended,security-and-quality
+        # Enable all available query packs for comprehensive coverage
+        packs: >-
+          codeql/${{ matrix.language }}-queries:AlertSuppression.ql,
+          codeql/${{ matrix.language }}-queries:AlertSuppressionAnnotations.ql
 
     # If the analyze step fails for one of the languages you are analyzing with
     # "We were unable to automatically build your code", modify the matrix above
