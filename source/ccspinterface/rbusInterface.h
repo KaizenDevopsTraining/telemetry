@@ -23,13 +23,19 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <vector.h>
-#ifdef GTEST_ENABLE
-#include "test/rbus/include/rbus.h"
-#else
 #include <rbus/rbus.h>
-#endif
 #include "busInterface.h"
 #include "telemetry2_0.h"
+
+bool isRbusInitialized( );
+
+void logHandler(rbusLogLevel level, const char* file, int line, int threadId, char* message);
+
+rbusError_t eventSubHandler(rbusHandle_t handle, rbusEventSubAction_t action, const char* eventName, rbusFilter_t* filter, int interval, bool* autoPublish);
+
+void publishReportUploadStatus(char* status);
+
+void setT2EventReceiveState(int T2_STATE);
 
 typedef void (*rbusMethodCallBackPtr) (rbusHandle_t handle, char const* methodName, rbusError_t retStatus, rbusObject_t params);
 
